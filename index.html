@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>私人邀请</title>
+<style>
+html{color-scheme:light;background:#f7f2ea;color:#402f2d;font:17px/1.8 system-ui,sans-serif}body{margin:0;min-height:100vh;min-height:100svh;display:grid;place-items:center}main{max-width:22em;padding:2em}p{margin:0}button{margin-top:1em;padding:.6em 1.4em;font:inherit;color:inherit;background:transparent;border:1px solid currentColor}
+</style>
+<main><p id="message" role="status">正在打开邀请…</p><button id="retry" type="button" hidden>重试</button><noscript>请用启用了 JavaScript 的手机浏览器打开完整邀请链接。</noscript></main>
+<script>
+const scope = new URL('./r-2910da8c43eb/', location.href)
+const message = document.querySelector('#message')
+const retry = document.querySelector('#retry')
+async function openInvitation() {
+  const privateKey = new URLSearchParams(location.hash.slice(1)).get('invite')
+  retry.hidden = true
+  if (!privateKey || !/^[0-9a-f]{64}$/.test(privateKey)) {
+    message.textContent = '请从收到的完整邀请链接进入。'
+    return
+  }
+  if (!window.isSecureContext || !navigator.serviceWorker || !window.crypto?.subtle) {
+    message.textContent = '请复制完整邀请链接，用手机上的 Safari 或 Chrome 打开。'
+    return
+  }
+  message.textContent = '正在打开邀请…'
+  try {
+    const reg = await navigator.serviceWorker.register(new URL('reader.js', scope), {scope: scope.pathname})
+    const worker = reg.installing || reg.waiting || reg.active
+    if (!worker) throw Error()
+    await new Promise((resolve, reject) => {
+      let timer = setTimeout(() => finish(false), 45000)
+      function finish(ok) { clearTimeout(timer); worker.removeEventListener('statechange', changed); ok ? resolve() : reject(Error()) }
+      function changed() { if (worker.state === 'activated') finish(true); else if (worker.state === 'redundant') finish(false) }
+      worker.addEventListener('statechange', changed)
+      changed()
+    })
+    const result = await new Promise((resolve, reject) => {
+      const channel = new MessageChannel()
+      const timer = setTimeout(() => {channel.port1.close(); reject(Error())}, 45000)
+      channel.port1.onmessage = e => { clearTimeout(timer); channel.port1.close(); resolve(e.data) }
+      worker.postMessage({ kind: 'open', key: privateKey }, [channel.port2])
+    })
+    if (result === 'invalid') { message.textContent = '这份邀请无法解锁。请重新打开收到的完整链接。'; return }
+    if (result !== 'ok') throw Error()
+    location.replace(new URL('view/', scope))
+  } catch {
+    message.textContent = '邀请暂时没有打开。请检查网络后重试，也可以把完整链接复制到系统浏览器。'
+    retry.hidden = false
+  }
+}
+retry.onclick = openInvitation
+window.addEventListener('hashchange', () => location.reload())
+openInvitation()
+</script>
+</html>
